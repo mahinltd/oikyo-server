@@ -377,6 +377,8 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       return res.status(400).json(errorResponse(400, 'Cannot downgrade order status'));
     }
 
+    let updatedOrder;
+
     // If cancelling, restore stock (only if not COD and not already refunded)
     if (status === 'cancelled' && order.orderStatus !== 'cancelled') {
       const session = await Order.startSession();
@@ -384,7 +386,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       try {
         await session.withTransaction(async () => {
           // Update order status
-          const updatedOrder = await Order.findByIdAndUpdate(
+          updatedOrder = await Order.findByIdAndUpdate(
             id,
             { orderStatus: 'cancelled' },
             { new: true, runValidators: true, session }
@@ -409,7 +411,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       }
     } else {
       // Update order status normally
-      const updatedOrder = await Order.findByIdAndUpdate(
+      updatedOrder = await Order.findByIdAndUpdate(
         id,
         { orderStatus: status },
         { new: true, runValidators: true }
@@ -425,11 +427,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
         logger.error(`Failed to send status update email: ${emailError.message}`);
         // Don't fail the status update if email sending fails
       }
-
-      res.status(200).json(
-        successResponse(200, updatedOrder, `Order status updated to ${status}`)
-      );
     }
+
+    // Send response for both cancellation and normal status update
+    res.status(200).json(
+      successResponse(200, updatedOrder, `Order status updated to ${status}`)
+    );
   } catch (error) {
     logger.error(`Error updating order status: ${error.message}`);
     res.status(500).json(errorResponse(500, 'Internal server error', 'Failed to update order status'));
