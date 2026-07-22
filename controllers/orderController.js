@@ -343,6 +343,8 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
+    logger.info(`Attempting to update order ${id} to ${status}`);
+
     // Validate status
     const validStatuses = ['processing', 'shipped', 'delivered', 'cancelled'];
     if (!status || !validStatuses.includes(status)) {
@@ -416,6 +418,11 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
         { orderStatus: status },
         { new: true, runValidators: true }
       ).select('-__v');
+
+      if (!updatedOrder) {
+        logger.warn(`Order not found during update attempt: ${id}`);
+        return res.status(404).json(errorResponse(404, 'Order not found'));
+      }
 
       logger.info(`Order ${id} status updated to ${status}`);
 

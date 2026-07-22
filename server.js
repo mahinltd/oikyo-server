@@ -35,6 +35,11 @@ initializeCronJobs();
 // Initialize Express app
 const app = express();
 
+// Trust proxy for production (Render deployment)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Trust the first proxy (Render's load balancer)
+}
+
 // Enable compression middleware for performance (gzip)
 app.use(compression());
 
@@ -137,6 +142,10 @@ const generalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Use the IP from the trusted proxy
+  validate: {
+    trustProxy: true
+  }
 });
 
 // Strict rate limiter for authentication endpoints
@@ -149,6 +158,9 @@ const strictAuthLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: {
+    trustProxy: true
+  }
 });
 
 // Moderate rate limiter for order endpoints
@@ -161,6 +173,9 @@ const orderLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: {
+    trustProxy: true
+  }
 });
 
 // Apply general rate limiting
@@ -215,7 +230,7 @@ process.on('unhandledRejection', (reason, promise) => {
     process.exit(1);
   });
   
-  // Force exit if server doesn't close in time
+  // Force exit after 10 seconds if server doesn't close
   setTimeout(() => {
     process.exit(1);
   }, 10000);
@@ -289,6 +304,7 @@ server.listen(PORT, () => {
   logger.info(`✅ Database Indexes Verified: Connection established`);
   logger.info(`✅ Graceful Shutdown Handlers Registered`);
   logger.info(`✅ Production Mode Ready: ${process.env.NODE_ENV === 'production' ? 'Yes' : 'No'}`);
+  logger.info(`✅ Trust Proxy: Configured for Render deployment`);
   logger.info(`Server is running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
