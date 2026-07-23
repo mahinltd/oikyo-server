@@ -38,7 +38,7 @@ const initializeFirebase = () => {
     } catch (noAppError) {
       // No default app exists, so initialize
       app = admin.initializeApp({
-        credential: admin.cert(serviceAccount),
+        credential: admin.credential.cert(serviceAccount),
         projectId: process.env.FIREBASE_PROJECT_ID,
       });
     }

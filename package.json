@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seedAdmin.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "audit": "npm audit"
+    "audit": "npm audit",
+    "fix-stock-status": "node scripts/fixMahasagarStockStatus.js"
   },
   "keywords": [],
   "author": "",

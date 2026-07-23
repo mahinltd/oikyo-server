@@ -244,44 +244,22 @@ const transformMahasagarProduct = (mahasagarProduct) => {
       .filter(url => url);
   }
   
-  // Handle pricing from product_variants - typically we'll use the first variant if multiple exist
-  let price = null;
-  let salePrice = null;
-  let status = 'active';
+  // Handle pricing - prioritize reselling_price over regular price
+  let price = Number(mahasagarProduct.reselling_price) || Number(mahasagarProduct.price) || 0;
+  let salePrice = Number(mahasagarProduct.sale_price) || null;
   
-  if (Array.isArray(mahasagarProduct.product_variants) && mahasagarProduct.product_variants.length > 0) {
-    // Use the first variant for pricing info
-    const variant = mahasagarProduct.product_variants[0];
-    price = Number(variant.reselling_price) || Number(mahasagarProduct.price) || 0;
-    salePrice = Number(variant.sale_price) || null;
-    
-    // Handle status from variant (assuming 3 means active based on API doc)
-    if (typeof variant.status !== 'undefined') {
-      status = Number(variant.status) === 3 ? 'active' : 'inactive';
-    }
-  } else {
-    // Fallback to product-level pricing if no variants
-    price = Number(mahasagarProduct.price) || 0;
-    salePrice = Number(mahasagarProduct.sale_price) || Number(mahasagarProduct.discount_price) || null;
-    
-    // Handle product-level status
-    if (typeof mahasagarProduct.status !== 'undefined') {
-      status = Number(mahasagarProduct.status) === 3 ? 'active' : 'inactive';
-    }
+  // Status mapping: if external status === 3 (or any positive integer), set to 'active'
+  // Only set to 'inactive' if external API explicitly returns status === 0
+  let status = 'active'; // Default to active
+  if (typeof mahasagarProduct.status !== 'undefined') {
+    status = Number(mahasagarProduct.status) === 0 ? 'inactive' : 'active';
   }
   
-  // Handle stock - look for quantity in various possible locations
-  let stock = 0;
+  // Handle stock - since API doesn't provide stock count, set default value
+  // Use manualOverride.stock if exists, otherwise default to 50
+  let stock = 50; // Default value
   if (typeof mahasagarProduct.stock !== 'undefined') {
     stock = Number(mahasagarProduct.stock) || 0;
-  } else if (Array.isArray(mahasagarProduct.product_variants) && mahasagarProduct.product_variants.length > 0) {
-    // If variants have stock information, use from first variant
-    const variant = mahasagarProduct.product_variants[0];
-    if (typeof variant.stock !== 'undefined') {
-      stock = Number(variant.stock) || 0;
-    } else if (typeof variant.quantity !== 'undefined') {
-      stock = Number(variant.quantity) || 0;
-    }
   }
   
   // Handle category - ensure it's a valid string
@@ -300,13 +278,14 @@ const transformMahasagarProduct = (mahasagarProduct) => {
   // Use product_code as an alternative identifier
   const sourceId = String(mahasagarProduct.product_code || mahasagarProduct.id || mahasagarProduct.product_id);
 
-  // Extract attributes if available
+  // Extract attributes from product_variant and product_attribute if available
   const attributes = {
     sizes: [],
     colors: [],
     variants: []
   };
 
+  // Extract variants and attributes from product_variants array
   if (Array.isArray(mahasagarProduct.product_variants)) {
     mahasagarProduct.product_variants.forEach(variant => {
       if (variant.size && !attributes.sizes.includes(variant.size)) {
@@ -315,10 +294,28 @@ const transformMahasagarProduct = (mahasagarProduct) => {
       if (variant.color && !attributes.colors.includes(variant.color)) {
         attributes.colors.push(variant.color);
       }
-      if (variant.name) {
+      if (variant.name || variant.variant_name) {
         attributes.variants.push({
-          name: variant.name,
-          value: variant.value || variant.id
+          name: variant.name || variant.variant_name,
+          value: variant.value || variant.id || variant.variant_value || variant.variant_name
+        });
+      }
+    });
+  }
+
+  // Also handle product_attributes if available
+  if (Array.isArray(mahasagarProduct.product_attributes)) {
+    mahasagarProduct.product_attributes.forEach(attr => {
+      if (attr.size && !attributes.sizes.includes(attr.size)) {
+        attributes.sizes.push(attr.size);
+      }
+      if (attr.color && !attributes.colors.includes(attr.color)) {
+        attributes.colors.push(attr.color);
+      }
+      if (attr.name) {
+        attributes.variants.push({
+          name: attr.name,
+          value: attr.value || attr.id
         });
       }
     });

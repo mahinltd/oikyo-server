@@ -1,410 +1,437 @@
-# Oikyo E-commerce Backend API Documentation
+# Oikyo Server - Backend API Documentation
 
-## Table of Contents
-- [Overview](#overview)
-- [Base URL](#base-url)
-- [Authentication](#authentication)
-- [Environment Variables](#environment-variables)
-- [API Endpoints](#api-endpoints)
-  - [Authentication](#authentication-endpoints)
-  - [CMS](#cms-endpoints)
-  - [Products](#products-endpoints)
-  - [Orders](#orders-endpoints)
-  - [Reviews](#reviews-endpoints)
-  - [Wishlist](#wishlist-endpoints)
-  - [Sync](#sync-endpoints)
-- [Data Models](#data-models)
-- [Frontend Integration Guide](#frontend-integration-guide)
-- [Production Features](#production-features)
-- [Architecture](#architecture)
+## 1. Overview & Architecture
 
-## Overview
+### Tech Stack
+- **Backend**: Node.js (ES Modules) + Express.js
+- **Database**: MongoDB (Mongoose ODM)
+- **Caching**: Redis (Upstash Redis with in-memory fallback)
+- **Real-time**: Socket.io
+- **Push Notifications**: Firebase Cloud Messaging (FCM)
+- **File Storage**: Cloudinary
+- **Email Service**: Resend
+- **External API Integration**: Mahasagar ERP
+- **Logging**: Winston
+- **Security**: Helmet, CORS, express-rate-limit, express-mongo-sanitize
 
-The Oikyo E-commerce Backend is a Node.js/Express/MongoDB application that provides a complete e-commerce solution with dynamic CMS, product synchronization from external APIs, and order management with manual payment processing.
+### Base URLs
+- **Local**: `http://localhost:5000/api`
+- **Production**: `https://yourdomain.com/api`
 
-### Architecture
-- **Backend**: Node.js with Express framework
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT-based with admin roles
-- **Security**: Helmet, CORS, rate limiting, input validation
-- **Email**: Resend for notifications
-- **File Upload**: Cloudinary integration
-- **Caching**: UPSTASH_REDIS for performance optimization
-- **Logging**: Winston for comprehensive logging
-- **Monitoring**: Health checks and error tracking
+## 2. Environment Variables
 
-## Base URL
+### Database Configuration
+```
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database
+```
 
-All API endpoints are prefixed with `/api/`
-Example: `https://your-domain.com/api/auth/login`
-
-## Authentication
-
-### JWT Token
-- All authenticated requests require a JWT token in the Authorization header
-- Format: `Authorization: Bearer <token>`
-- Token is returned upon successful login
-- Token expires after 7 days by default (configurable)
-
-### Admin Roles
-- Only users with role `admin` can access protected endpoints
-- Initial admin user is created via seeding script or protected registration
-
-## Environment Variables
-
-### Required Variables
-```env
-# Database
-MONGODB_URI=your_mongodb_connection_string
-
-# JWT
+### Security Configuration
+```
 JWT_SECRET=your_jwt_secret_key
 JWT_EXPIRES_IN=7d
+INIT_KEY=initialization_key_for_first_admin_registration
+```
 
-# Security
-NODE_ENV=development
-PORT=5000
-
-# Upstash Redis Configuration (Production Caching)
-UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
-
-# Cloudinary (for image uploads)
+### External Services Configuration
+```
+# Cloudinary (File Upload)
 CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
 CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 
-# Email (Resend)
+# Resend (Email Service)
 RESEND_API_KEY=your_resend_api_key
-EMAIL_FROM=email@yourdomain.com
+EMAIL_FROM=your_email@example.com
 
-# External APIs (Mahasagar, etc.)
-MAHASAGAR_API_URL=your_mahasagar_api_url
+# Mahasagar ERP Integration
+MAHASAGAR_API_URL=https://api.mahasagar.com/products
 MAHASAGAR_API_KEY=your_mahasagar_api_key
 MAHASAGAR_SECRET_KEY=your_mahasagar_secret_key
 
+# Firebase (Push Notifications)
+FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"your-project-id",...}
+FIREBASE_PROJECT_ID=your_firebase_project_id
+
+# Redis Caching
+UPSTASH_REDIS_REST_URL=https://your-redis-url.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_redis_token
+```
+
+### Feature Configuration
+```
+# Application
+NODE_ENV=production
+PORT=5000
+FRONTEND_URL=https://your-frontend-domain.com
+
 # Rate Limiting
-RATE_LIMIT_WINDOW_MS=15 * 60 * 1000
+RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=100
 
-# Admin User (for seeding)
-ADMIN_EMAIL=admin@oikyo.me
-ADMIN_PASSWORD=ChangeMe123!
+# CORS
+CORS_ORIGIN=https://your-frontend-domain.com
 
-# Init Key (for registering first admin via API)
-INIT_KEY=your_init_key_here
+# Other
+DEBUG=true
 ```
 
-### Frontend Configuration
-For frontend applications, you'll typically need:
-```env
-NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api
-```
+## 3. API Endpoints (Detailed)
 
-## API Endpoints
+### Authentication
 
-### Authentication Endpoints
-
-#### POST /auth/login
-- **Description**: Authenticate admin user and return JWT token
-- **Access**: Public
-- **Headers**: `Content-Type: application/json`
+#### POST `/api/auth/register`
+- **Access Level**: Public (Requires X-Init-Key header)
+- **Headers Required**: `X-Init-Key: <init_key>`
 - **Request Body**:
 ```json
 {
-  "email": "admin@example.com",
-  "password": "your_password"
+  "name": "string (required)",
+  "email": "string (required, valid email)",
+  "password": "string (required, min 6 chars)"
 }
 ```
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "data": {
-    "user": {
-      "id": "user_object_id",
-      "name": "Admin Name",
-      "email": "admin@example.com",
-      "role": "admin",
-      "isActive": true,
-      "createdAt": "2023-01-01T00:00:00.000Z"
-    },
-    "token": "jwt_token_string"
-  },
-  "statusCode": 200
-}
-```
-- **Error Response (400, 401)**:
-```json
-{
-  "success": false,
-  "message": "Invalid email or password",
-  "errors": null,
-  "statusCode": 401
-}
-```
-
-#### POST /auth/register
-- **Description**: Register new admin user (requires init key)
-- **Access**: Public (with X-Init-Key header)
-- **Headers**: 
-  - `Content-Type: application/json`
-  - `X-Init-Key: your_init_key`
-- **Request Body**:
-```json
-{
-  "name": "New Admin",
-  "email": "newadmin@example.com",
-  "password": "SecurePassword123!"
-}
-```
-- **Success Response (201)**:
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Admin registered successfully",
   "data": {
     "user": {
-      "id": "user_object_id",
-      "name": "New Admin",
-      "email": "newadmin@example.com",
+      "id": "ObjectId",
+      "name": "string",
+      "email": "string",
       "role": "admin",
       "isActive": true,
-      "createdAt": "2023-01-01T00:00:00.000Z"
+      "createdAt": "ISO date"
     },
-    "token": "jwt_token_string"
+    "token": "JWT token"
   },
   "statusCode": 201
 }
 ```
-- **Error Response (400, 403)**:
+- **Error Response**:
 ```json
 {
   "success": false,
-  "message": "Forbidden: Invalid initialization key",
+  "message": "Error message",
   "errors": null,
-  "statusCode": 403
+  "statusCode": 400
 }
 ```
+- **Description**: Registers the first admin user. Requires INIT_KEY in headers for security.
 
-### CMS Endpoints
+#### POST `/api/auth/login`
+- **Access Level**: Public
+- **Request Body**:
+```json
+{
+  "email": "string (required, valid email)",
+  "password": "string (required)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "user": {
+      "id": "ObjectId",
+      "name": "string",
+      "email": "string",
+      "role": "admin",
+      "isActive": true,
+      "createdAt": "ISO date"
+    },
+    "token": "JWT token"
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Authenticates admin user and returns JWT token.
 
-#### GET /cms/settings
-- **Description**: Get site settings
-- **Access**: Public
-- **Headers**: None required
-- **Success Response (200)**:
+### CMS (Content Management System)
+
+#### GET `/api/cms/settings`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Site settings retrieved successfully",
   "data": {
-    "_id": "settings_object_id",
-    "siteName": "Oikyo E-commerce",
-    "logoUrl": "https://example.com/logo.png",
-    "faviconUrl": "https://example.com/favicon.ico",
-    "contactEmail": "contact@oikyo.com",
-    "contactPhone": "+8801712345678",
+    "siteName": "string",
+    "logoUrl": "string (nullable)",
+    "faviconUrl": "string (nullable)",
+    "contactEmail": "string (nullable)",
+    "contactPhone": "string (nullable)",
     "socialLinks": {
-      "facebook": "https://facebook.com/oikyo",
-      "instagram": "https://instagram.com/oikyo",
-      "tiktok": "https://tiktok.com/@oikyo",
-      "twitter": "https://twitter.com/oikyo"
+      "facebook": "string (nullable)",
+      "instagram": "string (nullable)",
+      "tiktok": "string (nullable)",
+      "twitter": "string (nullable)"
     },
     "pixelIds": {
-      "googleAnalytics": "GA-XXXXXXXX-X",
-      "facebookPixel": "1234567890",
-      "tiktokPixel": "1234567890"
+      "googleAnalytics": "string (nullable)",
+      "facebookPixel": "string (nullable)",
+      "tiktokPixel": "string (nullable)"
     },
-    "currencySymbol": "৳",
-    "shippingPolicyText": "Shipping policy text...",
-    "returnPolicyText": "Return policy text...",
-    "createdAt": "2023-01-01T00:00:00.000Z",
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    "currencySymbol": "string",
+    "shippingPolicyText": "string (nullable)",
+    "returnPolicyText": "string (nullable)"
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves site-wide settings. Cached for 1 hour.
 
-#### PUT /cms/settings
-- **Description**: Update site settings
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **Request Body**: Partial update of settings fields
+#### PUT `/api/cms/settings`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
 ```json
 {
-  "siteName": "New Site Name",
-  "contactEmail": "new-contact@oikyo.com"
+  "siteName": "string (max 100 chars)",
+  "logoUrl": "string (valid URL)",
+  "faviconUrl": "string (valid URL)",
+  "contactEmail": "string (valid email)",
+  "contactPhone": "string (max 20 chars)",
+  "socialLinks": {
+    "facebook": "string (valid URL)",
+    "instagram": "string (valid URL)",
+    "tiktok": "string (valid URL)",
+    "twitter": "string (valid URL)"
+  },
+  "pixelIds": {
+    "googleAnalytics": "string",
+    "facebookPixel": "string",
+    "tiktokPixel": "string"
+  },
+  "currencySymbol": "string (max 5 chars)",
+  "shippingPolicyText": "string",
+  "returnPolicyText": "string"
 }
 ```
-- **Success Response (200)**: Similar to GET but with updated data
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Site settings updated successfully",
+  "data": { /* updated settings */ },
+  "statusCode": 200
+}
+```
+- **Description**: Updates site-wide settings. Cache invalidated after update.
 
-#### GET /cms/pages
-- **Description**: Get all active content pages
-- **Access**: Public
-- **Headers**: None required
-- **Success Response (200)**:
+#### GET `/api/cms/pages`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Active pages retrieved successfully",
   "data": [
     {
-      "slug": "about-us",
-      "title": "About Us",
-      "metaDescription": "Learn about our company",
-      "createdAt": "2023-01-01T00:00:00.000Z",
-      "updatedAt": "2023-01-01T00:00:00.000Z"
+      "_id": "ObjectId",
+      "slug": "string",
+      "title": "string",
+      "metaDescription": "string (nullable)",
+      "createdAt": "ISO date",
+      "updatedAt": "ISO date"
     }
   ],
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves all active CMS pages.
 
-#### GET /cms/pages/:slug
-- **Description**: Get content page by slug
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `slug` - the page slug
-- **Success Response (200)**:
+#### GET `/api/cms/pages/:slug`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Page retrieved successfully",
   "data": {
-    "_id": "page_object_id",
-    "slug": "about-us",
-    "title": "About Us",
-    "content": "<h1>About Us</h1><p>Content here...</p>",
-    "metaDescription": "Learn about our company",
-    "isActive": true,
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    "_id": "ObjectId",
+    "slug": "string",
+    "title": "string",
+    "content": "string",
+    "metaDescription": "string (nullable)",
+    "isActive": true
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves a specific page by slug.
 
-#### POST /cms/pages
-- **Description**: Create new content page
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
+#### POST `/api/cms/pages`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
 - **Request Body**:
 ```json
 {
-  "slug": "privacy-policy",
-  "title": "Privacy Policy",
-  "content": "<h1>Privacy Policy</h1><p>Content here...</p>",
-  "metaDescription": "Our privacy policy",
-  "isActive": true
+  "slug": "string (kebab-case, required)",
+  "title": "string (max 200 chars, required)",
+  "content": "string (required)",
+  "metaDescription": "string (max 300 chars)",
+  "isActive": "boolean"
 }
 ```
-- **Success Response (201)**:
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Page created successfully",
-  "data": {
-    "_id": "page_object_id",
-    "slug": "privacy-policy",
-    "title": "Privacy Policy",
-    "content": "<h1>Privacy Policy</h1><p>Content here...</p>",
-    "metaDescription": "Our privacy policy",
-    "isActive": true,
-    "updatedAt": "2023-01-01T00:00:00.000Z"
-  },
+  "data": { /* created page */ },
   "statusCode": 201
 }
 ```
+- **Description**: Creates a new CMS page.
 
-#### PUT /cms/pages/:slug
-- **Description**: Update content page by slug
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `slug` - the page slug
-- **Request Body**: Partial update of page fields
+#### PUT `/api/cms/pages/:slug`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
 ```json
 {
-  "title": "Updated Privacy Policy",
-  "content": "Updated content..."
+  "title": "string (max 200 chars)",
+  "content": "string",
+  "metaDescription": "string (max 300 chars)",
+  "isActive": "boolean"
 }
 ```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Page updated successfully",
+  "data": { /* updated page */ },
+  "statusCode": 200
+}
+```
+- **Description**: Updates an existing CMS page.
 
-#### DELETE /cms/pages/:slug
-- **Description**: Delete content page by slug
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `slug` - the page slug
+#### DELETE `/api/cms/pages/:slug`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Page deleted successfully",
+  "data": null,
+  "statusCode": 200
+}
+```
+- **Description**: Deletes a CMS page.
 
-#### GET /cms/banners
-- **Description**: Get all active banners
-- **Access**: Public
-- **Headers**: None required
-- **Success Response (200)**:
+#### GET `/api/cms/banners`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Banners retrieved successfully",
   "data": [
     {
-      "_id": "banner_object_id",
-      "imageUrl": "https://example.com/banner.jpg",
-      "linkUrl": "https://example.com/promotion",
-      "title": "Summer Sale",
-      "subtitle": "Up to 50% off",
-      "orderIndex": 1,
+      "_id": "ObjectId",
+      "imageUrl": "string",
+      "linkUrl": "string (nullable)",
+      "title": "string (nullable)",
+      "subtitle": "string (nullable)",
+      "orderIndex": "number",
       "isActive": true,
-      "createdAt": "2023-01-01T00:00:00.000Z"
+      "createdAt": "ISO date"
     }
   ],
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves all active banners. Results are sorted by orderIndex and cached for 1 hour.
 
-#### POST /cms/banners
-- **Description**: Create new banner
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
+#### POST `/api/cms/banners`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
 - **Request Body**:
 ```json
 {
-  "imageUrl": "https://example.com/new-banner.jpg",
-  "linkUrl": "https://example.com/new-promotion",
-  "title": "New Promotion",
-  "subtitle": "Limited time offer",
-  "orderIndex": 2,
-  "isActive": true
+  "imageUrl": "string (valid URL, required)",
+  "linkUrl": "string (valid URL)",
+  "title": "string (max 100 chars)",
+  "subtitle": "string (max 200 chars)",
+  "orderIndex": "number (min 0)",
+  "isActive": "boolean"
 }
 ```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Banner created successfully",
+  "data": { /* created banner */ },
+  "statusCode": 201
+}
+```
+- **Description**: Creates a new banner.
 
-#### PUT /cms/banners/:id
-- **Description**: Update banner by ID
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - the banner ID
-- **Request Body**: Partial update of banner fields
+#### PUT `/api/cms/banners/:id`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "imageUrl": "string (valid URL)",
+  "linkUrl": "string (valid URL)",
+  "title": "string (max 100 chars)",
+  "subtitle": "string (max 200 chars)",
+  "orderIndex": "number (min 0)",
+  "isActive": "boolean"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Banner updated successfully",
+  "data": { /* updated banner */ },
+  "statusCode": 200
+}
+```
+- **Description**: Updates an existing banner.
 
-#### DELETE /cms/banners/:id
-- **Description**: Delete banner by ID
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - the banner ID
+#### DELETE `/api/cms/banners/:id`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Banner deleted successfully",
+  "data": null,
+  "statusCode": 200
+}
+```
+- **Description**: Deletes a banner.
 
-### Products Endpoints
+### Products
 
-#### GET /products
-- **Description**: Get all active products with pagination and filtering
-- **Access**: Public
-- **Headers**: None required
+#### GET `/api/products`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Query Parameters**:
-  - `page` (default: 1)
-  - `limit` (default: 12, max: 100)
-  - `category` (filter by category)
-  - `minPrice` (minimum price filter)
-  - `maxPrice` (maximum price filter)
-  - `search` (search in name/description)
-  - `sort` (price_low_to_high, price_high_to_low, newest, popularity, discount)
-- **Success Response (200)**:
+  - `page`: number (default: 1)
+  - `limit`: number (default: 12, max: 100)
+  - `category`: string
+  - `minPrice`: number
+  - `maxPrice`: number
+  - `search`: string
+  - `sort`: string (values: price_low_to_high, price_high_to_low, name_asc, name_desc, popularity, discount)
+- **Success Response**:
 ```json
 {
   "success": true,
@@ -412,115 +439,42 @@ NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api
   "data": {
     "products": [
       {
-        "_id": "product_object_id",
-        "name": "Product Name",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": false,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "product-name"
+        "_id": "ObjectId",
+        "name": "string",
+        "price": "number",
+        "salePrice": "number (nullable)",
+        "images": ["string"],
+        "category": "string",
+        "status": "string",
+        "isFeatured": "boolean",
+        "createdAt": "ISO date",
+        "updatedAt": "ISO date",
+        "slug": "string",
+        "salesCount": "number",
+        "views": "number",
+        "discountPercentage": "number",
+        "shortDescription": "string"
       }
     ],
     "pagination": {
-      "currentPage": 1,
-      "totalPages": 5,
-      "totalProducts": 50,
-      "hasNextPage": true,
-      "hasPrevPage": false,
-      "hasMore": true,
-      "limit": 12
+      "currentPage": "number",
+      "totalPages": "number",
+      "totalProducts": "number",
+      "hasNextPage": "boolean",
+      "hasPrevPage": "boolean",
+      "hasMore": "boolean",
+      "limit": "number"
     }
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves all active products with pagination and filtering. Cached for 5 minutes.
 
-#### GET /products/:id
-- **Description**: Get product details by ID or slug
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `id` - the product ID or slug
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Product details fetched successfully",
-  "data": {
-    "product": {
-      "_id": "product_object_id",
-      "sourceId": "external_source_id",
-      "name": "Product Name",
-      "description": "Full product description...",
-      "sanitizedDescription": "Clean description...",
-      "category": "Electronics",
-      "price": 100,
-      "salePrice": 80,
-      "images": ["https://example.com/image.jpg"],
-      "stock": 10,
-      "status": "active",
-      "isFeatured": false,
-      "views": 0,
-      "salesCount": 0,
-      "attributes": {
-        "sizes": ["S", "M", "L"],
-        "colors": ["Red", "Blue"],
-        "variants": []
-      },
-      "discountPercentage": 20,
-      "createdAt": "2023-01-01T00:00:00.000Z",
-      "updatedAt": "2023-01-01T00:00:00.000Z",
-      "slug": "product-name"
-    }
-  },
-  "statusCode": 200
-}
-```
-
-#### GET /products/featured
-- **Description**: Get featured products
-- **Access**: Public
-- **Headers**: None required
-- **Query Parameters**:
-  - `limit` (default: 8, max: 20)
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Featured products fetched successfully",
-  "data": {
-    "products": [
-      {
-        "_id": "product_object_id",
-        "name": "Featured Product",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": true,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "featured-product"
-      }
-    ]
-  },
-  "statusCode": 200
-}
-```
-
-#### GET /products/categories
-- **Description**: Get all unique categories with product counts
-- **Access**: Public
-- **Headers**: None required
-- **Success Response (200)**:
+#### GET `/api/products/categories`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
@@ -528,230 +482,344 @@ NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api
   "data": {
     "categories": [
       {
-        "name": "Electronics",
-        "count": 150
-      },
-      {
-        "name": "Clothing",
-        "count": 89
+        "name": "string",
+        "count": "number"
       }
     ]
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves all unique categories with product counts. Cached for 1 hour.
 
-#### GET /products/deals
-- **Description**: Get products on sale (today's deals)
-- **Access**: Public
-- **Headers**: None required
+#### GET `/api/products/featured`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Query Parameters**:
-  - `limit` (default: 10, max: 20)
-- **Success Response (200)**:
+  - `limit`: number (default: 8, max: 20)
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Featured products fetched successfully",
+  "data": {
+    "products": [/* product objects */]
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Retrieves featured products. Cached for 10 minutes.
+
+#### GET `/api/products/deals`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Query Parameters**:
+  - `limit`: number (default: 10, max: 20)
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Deal products fetched successfully",
   "data": {
-    "products": [
-      {
-        "_id": "product_object_id",
-        "name": "On Sale Product",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": false,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "on-sale-product"
-      }
-    ]
+    "products": [/* product objects */]
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves products on sale (with salePrice < price). Cached for 10 minutes.
 
-#### GET /products/trending
-- **Description**: Get trending products
-- **Access**: Public
-- **Headers**: None required
+#### GET `/api/products/trending`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Query Parameters**:
-  - `limit` (default: 8, max: 20)
-- **Success Response (200)**:
+  - `limit`: number (default: 8, max: 20)
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Trending products fetched successfully",
   "data": {
-    "products": [
-      {
-        "_id": "product_object_id",
-        "name": "Trending Product",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": false,
-        "views": 150,
-        "salesCount": 25,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "trending-product"
-      }
-    ]
+    "products": [/* product objects */]
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves trending products based on views and recency. Cached for 10 minutes.
 
-#### GET /products/top-selling
-- **Description**: Get top selling products
-- **Access**: Public
-- **Headers**: None required
+#### GET `/api/products/top-selling`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Query Parameters**:
-  - `limit` (default: 8, max: 20)
-- **Success Response (200)**:
+  - `limit`: number (default: 8, max: 20)
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Top selling products fetched successfully",
   "data": {
-    "products": [
-      {
-        "_id": "product_object_id",
-        "name": "Top Selling Product",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": false,
-        "salesCount": 120,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "top-selling-product"
-      }
-    ]
+    "products": [/* product objects */]
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves top selling products based on sales count. Cached for 10 minutes.
 
-#### GET /products/category/:category
-- **Description**: Get products by category with optional filters
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `category` - the category name
-- **Query Parameters**:
-  - `page` (default: 1)
-  - `limit` (default: 12, max: 100)
-  - `minPrice` (minimum price filter)
-  - `maxPrice` (maximum price filter)
-  - `search` (search in name/description)
-  - `sort` (price_low_to_high, price_high_to_low, newest, popularity)
-- **Success Response (200)**:
+#### GET `/api/products/:id`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
-  "message": "Category products fetched successfully",
+  "message": "Product details fetched successfully",
   "data": {
-    "products": [
-      {
-        "_id": "product_object_id",
-        "name": "Category Product",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "status": "active",
-        "isFeatured": false,
-        "discountPercentage": 20,
-        "shortDescription": "Short description...",
-        "createdAt": "2023-01-01T00:00:00.000Z",
-        "updatedAt": "2023-01-01T00:00:00.000Z",
-        "slug": "category-product"
-      }
-    ],
-    "pagination": {
-      "currentPage": 1,
-      "totalPages": 3,
-      "totalProducts": 25,
-      "hasNextPage": true,
-      "hasPrevPage": false,
-      "hasMore": true,
-      "limit": 12
+    "product": {
+      "_id": "ObjectId",
+      "name": "string",
+      "description": "string",
+      "category": "string",
+      "price": "number",
+      "salePrice": "number (nullable)",
+      "images": ["string"],
+      "stock": "number",
+      "status": "string",
+      "isFeatured": "boolean",
+      "views": "number",
+      "salesCount": "number",
+      "attributes": {
+        "sizes": ["string"],
+        "colors": ["string"],
+        "variants": [{"name": "string", "value": "string"}]
+      },
+      "discountPercentage": "number",
+      "sanitizedDescription": "string"
     }
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves detailed product information by ID or slug. Increments view count.
 
-### Reviews Endpoints
+#### GET `/api/products/category/:category`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Query Parameters**:
+  - `page`: number (default: 1)
+  - `limit`: number (default: 12, max: 100)
+  - `minPrice`: number
+  - `maxPrice`: number
+  - `search`: string
+  - `sort`: string (values: price_low_to_high, price_high_to_low, name_asc, name_desc, popularity)
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Category products fetched successfully",
+  "data": {
+    "products": [/* product objects */],
+    "pagination": {/* pagination info */}
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Retrieves products filtered by category with pagination and filtering. Cached for 5 minutes.
 
-#### POST /reviews
-- **Description**: Create a new product review (with optional images)
-- **Access**: Public
-- **Headers**: `Content-Type: multipart/form-data` (for image uploads)
-- **Form Data**:
-  - `productId`: Product ID
-  - `customerName`: Customer's name
-  - `customerEmail`: Customer's email
-  - `rating`: Rating (1-5)
-  - `comment`: Review comment (min 10 chars)
+### Orders
+
+#### POST `/api/orders`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Request Body**:
+```json
+{
+  "customerInfo": {
+    "name": "string (max 100 chars, required)",
+    "phone": "string (max 20 chars, required)",
+    "email": "string (valid email, required)",
+    "address": "string (max 500 chars, required)",
+    "city": "string (max 50 chars, required)",
+    "zip": "string (max 10 chars, required)"
+  },
+  "items": [
+    {
+      "productId": "ObjectId (required)",
+      "quantity": "number (min 1, required)"
+    }
+  ],
+  "paymentMethod": "string (values: bkash, nagad, rocket, cod, required)",
+  "transactionId": "string (required for online payments, optional for COD)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "data": {
+    "_id": "ObjectId",
+    "customerInfo": { /* customer info */ },
+    "items": [
+      {
+        "productId": "ObjectId",
+        "productName": "string",
+        "quantity": "number",
+        "priceAtPurchase": "number",
+        "image": "string (nullable)"
+      }
+    ],
+    "paymentMethod": "string",
+    "transactionId": "string (nullable)",
+    "paymentStatus": "string",
+    "orderStatus": "string",
+    "totalAmount": "number",
+    "createdAt": "ISO date",
+    "updatedAt": "ISO date"
+  },
+  "statusCode": 201
+}
+```
+- **Description**: Creates a new order. For COD, sets orderStatus to 'processing' and paymentStatus to 'verified'. For online payments, sets orderStatus to 'pending_payment' and paymentStatus to 'pending'.
+
+#### GET `/api/orders/phone/:phone`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "data": [
+    {
+      "_id": "ObjectId",
+      "customerInfo": { /* customer info */ },
+      "items": [/* items */],
+      "paymentMethod": "string",
+      "transactionId": "string (nullable)",
+      "paymentStatus": "string",
+      "orderStatus": "string",
+      "totalAmount": "number",
+      "createdAt": "ISO date",
+      "updatedAt": "ISO date"
+    }
+  ],
+  "statusCode": 200
+}
+```
+- **Description**: Retrieves orders by customer phone number for tracking purposes.
+
+#### GET `/api/orders`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Query Parameters**:
+  - `page`: number (default: 1)
+  - `limit`: number (default: 10)
+  - `status`: string (filter by order status)
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "data": [/* order objects */],
+  "pagination": {
+    "currentPage": "number",
+    "totalPages": "number",
+    "totalOrders": "number",
+    "hasNext": "boolean",
+    "hasPrev": "boolean"
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Retrieves all orders with pagination and optional status filtering.
+
+#### POST `/api/orders/:id/verify`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "action": "string (values: approve, reject, required)",
+  "reason": "string (required for reject action)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Payment approved/rejected successfully",
+  "data": {
+    "order": { /* updated order */ },
+    "emailSent": "boolean"
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Verifies or rejects payment for an order. For approval, sets paymentStatus to 'verified' and orderStatus to 'processing'. For rejection, sets paymentStatus to 'rejected', orderStatus to 'cancelled', and restores stock.
+
+#### PUT `/api/orders/:id/status`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "status": "string (values: processing, shipped, delivered, cancelled, required)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Order status updated to [status]",
+  "data": { /* updated order */ },
+  "statusCode": 200
+}
+```
+- **Description**: Updates order status. For cancellation, restores stock if payment was verified and order wasn't delivered.
+
+### Reviews
+
+#### POST `/api/reviews`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Request Body**:
+```json
+{
+  "productId": "ObjectId (required)",
+  "customerName": "string (2-100 chars, required)",
+  "customerEmail": "string (valid email, required)",
+  "rating": "number (1-5, required)",
+  "comment": "string (10-1000 chars, required)"
+}
+```
+- **Request Files**:
   - `images`: Array of image files (max 3, max 2MB each)
-- **Success Response (201)**:
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Review submitted successfully. Awaiting approval.",
   "data": {
-    "_id": "review_object_id",
-    "product": "product_object_id",
-    "customerName": "John Doe",
-    "customerEmail": "john@example.com",
-    "rating": 5,
-    "comment": "Great product!",
-    "images": [
-      "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/reviews/image1.jpg",
-      "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/reviews/image2.jpg"
-    ],
+    "_id": "ObjectId",
+    "product": "ObjectId",
+    "customerName": "string",
+    "customerEmail": "string",
+    "rating": "number",
+    "comment": "string",
+    "images": ["string"],
     "status": "pending",
     "verifiedPurchase": false,
-    "createdAt": "2023-01-01T00:00:00.000Z",
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    "createdAt": "ISO date",
+    "updatedAt": "ISO date"
   },
   "statusCode": 201
 }
 ```
-- **Error Response (400, 404)**:
-```json
-{
-  "success": false,
-  "message": "You have already reviewed this product",
-  "errors": null,
-  "statusCode": 400
-}
-```
-- **Notes**: 
-  - Reviews are created with 'pending' status and must be approved by admin
-  - Images are uploaded to Cloudinary and URLs are stored
-  - Maximum 3 images per review, 2MB each
+- **Description**: Submits a new review for a product. Reviews start as 'pending' status for admin approval.
 
-#### GET /reviews/product/:productId
-- **Description**: Get all approved reviews for a product
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `productId` - the product ID
-- **Success Response (200)**:
+#### GET `/api/reviews/product/:productId`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
@@ -759,362 +827,297 @@ NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api
   "data": {
     "reviews": [
       {
-        "_id": "review_object_id",
-        "product": "product_object_id",
-        "customerName": "John Doe",
-        "rating": 5,
-        "comment": "Great product!",
-        "images": [
-          "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/reviews/image1.jpg"
-        ],
-        "status": "approved",
-        "verifiedPurchase": true,
-        "createdAt": "2023-01-01T00:00:00.000Z"
+        "_id": "ObjectId",
+        "customerName": "string",
+        "rating": "number",
+        "comment": "string",
+        "images": ["string"],
+        "verifiedPurchase": "boolean",
+        "createdAt": "ISO date"
       }
     ],
-    "averageRating": 4.5
+    "averageRating": "number"
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves all approved reviews for a specific product.
 
-#### PUT /reviews/:id/approve
-- **Description**: Approve a pending review
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - the review ID
-- **Success Response (200)**:
+#### PUT `/api/reviews/:id/approve`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Review approved successfully",
-  "data": {
-    "_id": "review_object_id",
-    "status": "approved",
-    // ... rest of review data
-  },
+  "data": { /* updated review */ },
   "statusCode": 200
 }
 ```
+- **Description**: Approves a pending review.
 
-#### PUT /reviews/:id/reject
-- **Description**: Reject a pending review
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - the review ID
-- **Success Response (200)**:
+#### PUT `/api/reviews/:id/reject`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "reason": "string (optional)"
+}
+```
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Review rejected successfully",
-  "data": {
-    "_id": "review_object_id",
-    "status": "rejected",
-    // ... rest of review data
-  },
+  "data": { /* updated review */ },
   "statusCode": 200
 }
 ```
+- **Description**: Rejects a pending review.
 
-### Wishlist Endpoints
+#### DELETE `/api/reviews/:id`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Review deleted successfully",
+  "data": {},
+  "statusCode": 200
+}
+```
+- **Description**: Deletes a review and removes associated images from Cloudinary.
 
-#### POST /wishlist/add
-- **Description**: Add a product to user's wishlist
-- **Access**: Public
-- **Headers**: `Content-Type: application/json`
+### Wishlist
+
+#### POST `/api/wishlist/add`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Request Body**:
 ```json
 {
-  "userIdentifier": "user@example.com", // or phone number like "+8801712345678"
-  "productId": "product_object_id"
+  "userIdentifier": "string (email or phone number, required)",
+  "productId": "ObjectId (required)"
 }
 ```
-- **Success Response (200)**:
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Product added to wishlist successfully",
   "data": {
-    "_id": "wishlist_object_id",
-    "userIdentifier": "user@example.com",
-    "products": ["product_object_id", "another_product_id"],
-    "createdAt": "2023-01-01T00:00:00.000Z",
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    "_id": "ObjectId",
+    "userIdentifier": "string",
+    "products": ["ObjectId"],
+    "createdAt": "ISO date",
+    "updatedAt": "ISO date"
   },
   "statusCode": 200
 }
 ```
-- **Notes**: 
-  - `userIdentifier` can be email or phone number
-  - Product is added only if not already in wishlist
+- **Description**: Adds a product to the user's wishlist.
 
-#### DELETE /wishlist/remove
-- **Description**: Remove a product from user's wishlist
-- **Access**: Public
-- **Headers**: `Content-Type: application/json`
+#### DELETE `/api/wishlist/remove`
+- **Access Level**: Public
+- **Headers Required**: None
 - **Request Body**:
 ```json
 {
-  "userIdentifier": "user@example.com", // or phone number
-  "productId": "product_object_id"
+  "userIdentifier": "string (email or phone number, required)",
+  "productId": "ObjectId (required)"
 }
 ```
-- **Success Response (200)**:
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Product removed from wishlist successfully",
   "data": {
-    "_id": "wishlist_object_id",
-    "userIdentifier": "user@example.com",
-    "products": ["another_product_id"], // Product removed
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    "_id": "ObjectId",
+    "userIdentifier": "string",
+    "products": ["ObjectId"],
+    "createdAt": "ISO date",
+    "updatedAt": "ISO date"
   },
   "statusCode": 200
 }
 ```
+- **Description**: Removes a product from the user's wishlist.
 
-#### GET /wishlist/:identifier
-- **Description**: Get user's wishlist with product details
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `identifier` - user's email or phone number
-- **Success Response (200)**:
+#### GET `/api/wishlist/:identifier`
+- **Access Level**: Public
+- **Headers Required**: None
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Wishlist retrieved successfully",
   "data": {
-    "_id": "wishlist_object_id",
-    "userIdentifier": "user@example.com",
     "products": [
       {
-        "_id": "product_object_id",
-        "name": "Product Name",
-        "price": 100,
-        "salePrice": 80,
-        "images": ["https://example.com/image.jpg"],
-        "category": "Electronics",
-        "stock": 10,
-        "status": "active",
-        "isFeatured": true
+        "_id": "ObjectId",
+        "name": "string",
+        "price": "number",
+        "salePrice": "number (nullable)",
+        "images": ["string"],
+        "category": "string",
+        "stock": "number",
+        "status": "string",
+        "isFeatured": "boolean"
       }
-    ],
-    "updatedAt": "2023-01-01T00:00:00.000Z"
+    ]
   },
   "statusCode": 200
 }
 ```
+- **Description**: Retrieves the user's wishlist by email or phone number.
 
-### Orders Endpoints
+### Sync
 
-#### POST /orders
-- **Description**: Create new order (public)
-- **Access**: Public
-- **Headers**: `Content-Type: application/json`
-- **Request Body**:
-```json
-{
-  "customerInfo": {
-    "name": "John Doe",
-    "phone": "+8801712345678",
-    "email": "john@example.com",
-    "address": "123 Main St",
-    "city": "Dhaka",
-    "zip": "1200"
-  },
-  "items": [
-    {
-      "productId": "product_object_id",
-      "quantity": 2
-    }
-  ],
-  "paymentMethod": "bkash", // or 'nagad', 'rocket', 'cod'
-  "transactionId": "BKASH123456789" // Required for bKash/Nagad/Rocket, optional for COD
-}
-```
-- **Success Response (201)**:
-```json
-{
-  "success": true,
-  "message": "Order created successfully",
-  "data": {
-    "_id": "order_object_id",
-    "customerInfo": {
-      "name": "John Doe",
-      "phone": "+8801712345678",
-      "email": "john@example.com",
-      "address": "123 Main St",
-      "city": "Dhaka",
-      "zip": "1200"
-    },
-    "items": [
-      {
-        "productId": "product_object_id",
-        "productName": "Product Name",
-        "quantity": 2,
-        "priceAtPurchase": 100,
-        "image": "https://example.com/image.jpg",
-        "_id": "item_object_id"
-      }
-    ],
-    "paymentMethod": "bkash",
-    "transactionId": "BKASH123456789",
-    "paymentStatus": "pending", // or 'verified' for COD
-    "orderStatus": "pending_payment", // or 'confirmed' for COD
-    "totalAmount": 200,
-    "createdAt": "2023-01-01T00:00:00.000Z",
-    "updatedAt": "2023-01-01T00:00:00.000Z"
-  },
-  "statusCode": 201
-}
-```
-- **Notes**: 
-  - Stock is deducted immediately upon order creation
-  - For COD orders, paymentStatus is 'verified' and orderStatus is 'confirmed'
-  - For online payments, status remains 'pending' until admin verifies
-
-#### GET /orders/phone/:phone
-- **Description**: Get orders by customer phone number (for tracking)
-- **Access**: Public
-- **Headers**: None required
-- **URL Parameter**: `phone` - customer phone number
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Orders retrieved successfully",
-  "data": [
-    {
-      "_id": "order_object_id",
-      "customerInfo": { ... },
-      "items": [...],
-      "paymentMethod": "bkash",
-      "transactionId": "BKASH123456789",
-      "paymentStatus": "pending",
-      "orderStatus": "pending_payment",
-      "totalAmount": 200,
-      "createdAt": "2023-01-01T00:00:00.000Z",
-      "updatedAt": "2023-01-01T00:00:00.000Z"
-    }
-  ],
-  "statusCode": 200
-}
-```
-
-#### GET /orders
-- **Description**: Get all orders (admin only, with pagination/filtering)
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **Query Parameters**:
-  - `page` (default: 1)
-  - `limit` (default: 10)
-  - `status` (filter by order status)
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Orders retrieved successfully",
-  "data": [...],
-  "pagination": {
-    "currentPage": 1,
-    "totalPages": 5,
-    "totalOrders": 45,
-    "hasNext": true,
-    "hasPrev": false
-  },
-  "statusCode": 200
-}
-```
-
-#### POST /orders/:id/verify
-- **Description**: Verify payment for an order
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - order ID
-- **Request Body**:
-```json
-{
-  "action": "approve", // or 'reject'
-  "reason": "Payment verified" // required if rejecting
-}
-```
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Payment approved successfully",
-  "data": {
-    "order": { ... }, // Updated order object
-    "emailSent": true
-  },
-  "statusCode": 200
-}
-```
-
-#### PUT /orders/:id/status
-- **Description**: Update order status
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **URL Parameter**: `id` - order ID
-- **Request Body**:
-```json
-{
-  "status": "shipped" // or 'processing', 'delivered', 'cancelled'
-}
-```
-- **Success Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Order status updated to shipped",
-  "data": { ... }, // Updated order object
-  "statusCode": 200
-}
-```
-
-### Sync Endpoints
-
-#### POST /sync/products
-- **Description**: Trigger product sync from external API
-- **Access**: Admin only
-- **Headers**: `Authorization: Bearer <token>`
-- **Success Response (200)**:
+#### POST `/api/sync/products`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
 ```json
 {
   "success": true,
   "message": "Sync started in background",
   "data": {
-    "message": "Sync started in background"
+    "message": "Product sync initiated"
   },
   "statusCode": 200
 }
 ```
-- **Notes**: 
-  - Sync runs in background to avoid blocking the request
-  - Actual sync results are logged to server console
-  - Respects manualOverride settings on products
+- **Description**: Triggers product sync from Mahasagar API. The sync runs in the background and returns immediately. The sync includes creating/updating products based on the external API data and respects manual overrides.
 
-## Data Models
+### Notifications
 
-### TypeScript Interfaces for Frontend
+#### POST `/api/notifications/register-token`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "fcmToken": "string (required)",
+  "userType": "string (values: admin, customer, default: admin)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "FCM token registered successfully",
+  "data": {
+    "message": "FCM token registered successfully",
+    "fcmToken": "string"
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Registers an FCM token for push notifications.
+
+#### DELETE `/api/notifications/unregister-token`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Request Body**:
+```json
+{
+  "fcmToken": "string (required)"
+}
+```
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "FCM token unregistered successfully",
+  "data": {
+    "message": "FCM token unregistered successfully",
+    "fcmToken": "string"
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Unregisters an FCM token.
+
+#### GET `/api/notifications`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Query Parameters**:
+  - `page`: number (default: 1)
+  - `limit`: number (default: 10)
+  - `type`: string (filter by notification type)
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Notifications retrieved successfully",
+  "data": {
+    "notifications": [
+      {
+        "_id": "ObjectId",
+        "type": "string",
+        "title": "string",
+        "message": "string",
+        "data": {},
+        "read": "boolean",
+        "readAt": "ISO date (nullable)",
+        "createdAt": "ISO date",
+        "updatedAt": "ISO date"
+      }
+    ],
+    "pagination": {
+      "currentPage": "number",
+      "totalPages": "number",
+      "totalNotifications": "number",
+      "hasNext": "boolean",
+      "hasPrev": "boolean"
+    }
+  },
+  "statusCode": 200
+}
+```
+- **Description**: Retrieves user's notifications with pagination.
+
+#### PUT `/api/notifications/:id/read`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "Notification marked as read",
+  "data": { /* updated notification */ },
+  "statusCode": 200
+}
+```
+- **Description**: Marks a notification as read.
+
+#### PUT `/api/notifications/mark-all-read`
+- **Access Level**: Admin Only
+- **Headers Required**: `Authorization: Bearer <token>`
+- **Success Response**:
+```json
+{
+  "success": true,
+  "message": "All notifications marked as read",
+  "data": {},
+  "statusCode": 200
+}
+```
+- **Description**: Marks all unread notifications as read.
+
+## 4. Data Models (TypeScript Interfaces)
 
 ```typescript
-// User Interface
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin';
-  isActive: boolean;
-  createdAt: string;
-}
-
 // Product Interface
 interface Product {
   _id: string;
-  sourceId: string; // ID from external API
+  sourceId: string;
   name: string;
+  slug: string;
   description: string;
   category: string;
   price: number;
@@ -1128,50 +1131,19 @@ interface Product {
   attributes: {
     sizes: string[];
     colors: string[];
-    variants: { name: string; value: string }[];
+    variants: {
+      name: string;
+      value: string;
+    }[];
   };
   manualOverride?: {
     price?: number;
     stock?: number;
     isActive?: boolean;
   };
-  lastSyncedAt: string;
-  createdAt: string;
-  updatedAt: string;
-  slug: string;
-}
-
-// Review Interface
-interface Review {
-  _id: string;
-  product: string; // Product ID
-  customerName: string;
-  customerEmail: string;
-  rating: number; // 1-5
-  comment: string;
-  images?: string[];
-  status: 'pending' | 'approved' | 'rejected';
-  verifiedPurchase: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Wishlist Interface
-interface Wishlist {
-  _id: string;
-  userIdentifier: string; // Email or phone
-  products: Product[]; // Populated product objects
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Order Item Interface
-interface OrderItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  priceAtPurchase: number;
-  image?: string;
+  lastSyncedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // Order Interface
@@ -1185,14 +1157,57 @@ interface Order {
     city: string;
     zip: string;
   };
-  items: OrderItem[];
+  items: {
+    productId: string;
+    productName: string;
+    quantity: number;
+    priceAtPurchase: number;
+    image?: string;
+  }[];
   paymentMethod: 'bkash' | 'nagad' | 'rocket' | 'cod';
   transactionId?: string;
   paymentStatus: 'pending' | 'verified' | 'rejected';
-  orderStatus: 'pending_payment' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  orderStatus: 'pending_payment' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   totalAmount: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// User Interface
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: 'admin';
+  isActive: boolean;
+  fcmTokens: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Review Interface
+interface Review {
+  _id: string;
+  product: string;
+  customerName: string;
+  customerEmail: string;
+  rating: number;
+  comment: string;
+  images: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  verifiedPurchase: boolean;
+  rejectionReason?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Wishlist Interface
+interface Wishlist {
+  _id: string;
+  userIdentifier: string;
+  products: string[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // Banner Interface
@@ -1204,7 +1219,7 @@ interface Banner {
   subtitle?: string;
   orderIndex: number;
   isActive: boolean;
-  createdAt: string;
+  createdAt: Date;
 }
 
 // ContentPage Interface
@@ -1215,7 +1230,7 @@ interface ContentPage {
   content: string;
   metaDescription?: string;
   isActive: boolean;
-  updatedAt: string;
+  updatedAt: Date;
 }
 
 // SiteSettings Interface
@@ -1240,211 +1255,126 @@ interface SiteSettings {
   currencySymbol: string;
   shippingPolicyText?: string;
   returnPolicyText?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Notification Interface
+interface Notification {
+  _id: string;
+  userId: string;
+  type: 'order' | 'payment' | 'review' | 'low_stock' | 'system';
+  title: string;
+  message: string;
+  data: any;
+  read: boolean;
+  readAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Enums
+enum PaymentStatus {
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+  REJECTED = 'rejected'
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT = 'pending_payment',
+  PROCESSING = 'processing',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled'
+}
+
+enum ProductStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  OUT_OF_STOCK = 'out_of_stock'
+}
+
+enum ReviewStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected'
 }
 ```
 
-### Enums
-
-```typescript
-// Payment Methods
-type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'cod';
-
-// Payment Status
-type PaymentStatus = 'pending' | 'verified' | 'rejected';
-
-// Order Status
-type OrderStatus = 'pending_payment' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-
-// Product Status
-type ProductStatus = 'active' | 'inactive' | 'out_of_stock';
-
-// Review Status
-type ReviewStatus = 'pending' | 'approved' | 'rejected';
-```
-
-## Frontend Integration Guide
+## 5. Frontend Integration Guide
 
 ### Authentication Flow
+1. For the first admin registration, use the `/api/auth/register` endpoint with the `X-Init-Key` header
+2. For subsequent logins, use `/api/auth/login` with email and password
+3. Store the returned JWT token in localStorage/sessionStorage
+4. Include the token in the Authorization header for protected routes: `Authorization: Bearer <token>`
+5. Handle token expiration by redirecting to login page
 
-1. **Login**: Call `POST /auth/login` with email/password
-2. **Store Token**: Save the JWT token in localStorage/sessionStorage
-3. **Include Token**: Add `Authorization: Bearer <token>` header to all protected requests
-4. **Handle Expiry**: Implement token refresh or redirect to login when receiving 401 errors
-
-### Order Flow Implementation
-
-1. **Cart Creation**: Collect products and quantities
-2. **Customer Info**: Gather customer details (name, phone, address, etc.)
-3. **Payment Selection**: 
-   - For COD: Set `paymentMethod: 'cod'`, no transaction ID needed
-   - For Online Payments: Set method and collect transaction ID
-4. **Place Order**: Call `POST /orders` with collected data
-5. **Track Order**: Use `GET /orders/phone/{phone}` for customer tracking
-6. **Show Instructions**: Display payment instructions based on selected method
-
-### Review System Implementation
-
-1. **Display Reviews**: Use `GET /reviews/product/{productId}` to show approved reviews
-2. **Submit Review**: Use `POST /reviews` with form data including images
-3. **Admin Approval**: Only admin can approve/reject reviews via respective endpoints
-4. **Image Upload**: Reviews support up to 3 images, max 2MB each, stored on Cloudinary
-5. **Pending Status**: Reviews are pending until admin approves them
-
-### Wishlist Implementation
-
-1. **Add to Wishlist**: Use `POST /wishlist/add` with user identifier and product ID
-2. **Remove from Wishlist**: Use `DELETE /wishlist/remove` with user identifier and product ID
-3. **View Wishlist**: Use `GET /wishlist/{identifier}` to get user's wishlist with product details
-4. **User Identification**: Use email or phone number as user identifier
-
-### Error Handling Strategy
-
-The backend returns consistent error responses:
-
-```typescript
-interface ErrorResponse {
-  success: false;
-  message: string;
-  errors?: string[] | string | object; // Specific validation errors
-  statusCode: number;
+### Infinite Scroll
+1. Use the `hasMore` flag in the pagination object returned by product endpoints
+2. When `hasMore` is true, automatically load the next page of products
+3. Example implementation:
+```javascript
+// When scrolling near bottom of page
+if (pagination.hasMore) {
+  loadMoreProducts(pagination.currentPage + 1);
 }
 ```
-
-Handle errors in your frontend:
-- Show `response.data.message` to users
-- Log `response.data.errors` for debugging
-- Handle specific status codes (401 redirect to login, etc.)
-
-### Image Handling
-
-- Product and banner images are stored as URLs
-- Review images are uploaded to Cloudinary and stored as URLs
-- Use the URLs directly in your image tags
-- Cloudinary integration provides image optimization and transformations
 
 ### Manual Payment Flow
+1. For Cash on Delivery (COD): 
+   - Set `paymentMethod: 'cod'`
+   - The order status will automatically be set to 'processing' (not 'pending_payment')
+   - Payment is considered verified on delivery
+2. For Online Payments (bkash/nagad/rocket):
+   - Set `paymentMethod: 'bkash'|'nagad'|'rocket'`
+   - Include `transactionId` in the request
+   - Order status will be 'pending_payment' until admin verifies payment
+3. Admin must verify payment using `/api/orders/:id/verify` endpoint
 
-1. Customer selects payment method (bKash, Nagad, Rocket, or COD)
-2. If COD, order is confirmed immediately
-3. If online payment, customer completes payment externally
-4. Customer provides transaction ID
-5. Admin verifies payment manually via `POST /orders/{id}/verify`
-6. Order proceeds to processing/shipping/delivery
+### Real-Time Notifications
+1. Connect to Socket.io server at the same domain
+2. Authenticate with JWT token
+3. Join the 'admin_room' to receive order and other notifications
+4. Listen for events: `new_order`, `payment_verified`, `new_review`, `low_stock_alert`
 
-### Pagination
+### Error Handling
+1. All API responses follow the standard format:
+```json
+{
+  "success": true/false,
+  "message": "Human-readable message",
+  "data": {...}, // Present on success
+  "errors": {...}, // Present on error
+  "statusCode": 200/400/500/etc
+}
+```
+2. Check the `success` field first to determine if the request was successful
+3. Display the `message` field to users for feedback
 
-Most list endpoints support pagination:
-- Use `page` and `limit` query parameters
-- Check the `pagination` object in response for navigation
-- Handle `hasNext` and `hasPrev` flags for UI navigation
+## 6. Production Features
 
-### Performance Tips
+### Caching Strategy (Redis)
+- Product listings: Cached for 5 minutes
+- Category listings: Cached for 1 hour
+- Deal products: Cached for 10 minutes
+- Trending products: Cached for 10 minutes
+- Top selling products: Cached for 10 minutes
+- Featured products: Cached for 10 minutes
+- CMS settings: Cached for 1 hour
+- CMS banners: Cached for 1 hour
+- Automatic cache invalidation after product sync or CMS updates
 
-- Cache CMS settings and pages for better performance
-- Implement loading states for sync operations
-- Use debouncing for search/filter operations
-- Consider implementing optimistic updates for better UX
-- For reviews, cache average ratings to reduce API calls
+### Security Measures
+- Rate limiting: General (100 requests per 15 min), Auth (5 login attempts per 15 min), Orders (10 requests per 1 min)
+- Input sanitization: Prevents NoSQL injection attacks
+- JWT authentication with HttpOnly cookies
+- Helmet security headers including CSP
+- CORS configured for specific domains in production
+- Password hashing with bcryptjs
 
-## Production Features
-
-### UPSTASH_REDIS Caching
-- **Purpose**: High-performance caching layer for frequently accessed data
-- **Cached Endpoints**:
-  - `GET /products` (5 minutes)
-  - `GET /products/categories` (1 hour)
-  - `GET /products/deals` (10 minutes)
-  - `GET /products/trending` (10 minutes)
-  - `GET /cms/settings` (1 hour)
-  - `GET /cms/banners` (1 hour)
-- **Fallback**: In-memory cache when Redis is unavailable (fail-open strategy)
-- **Cache Invalidation**: Automatically cleared when products/settings are updated
-
-### Winston Logging
-- **Log Levels**: error, warn, info, http
-- **Log Files**: 
-  - `logs/error.log` (errors only)
-  - `logs/combined.log` (all logs)
-- **Logged Events**:
-  - Order creation and updates
-  - Payment verification failures
-  - Product synchronization failures
-  - Authentication failures
-  - Redis cache failures
-  - Unexpected server errors
-
-### Security Features
-- **Rate Limiting**:
-  - General: 100 requests per 15 minutes per IP
-  - Authentication: 5 login attempts per 15 minutes per IP
-  - Orders: 10 requests per minute per IP
-- **Helmet**: Security headers for HTTP response protection
-- **Mongo Sanitize**: Protection against NoSQL injection
-- **CSP**: Content Security Policy to prevent XSS attacks
-
-### Database Optimization
-- **MongoDB Indexes**:
-  - Product: status, category, price, name (text), isFeatured, views, salesCount
-  - Order: customerInfo.phone, orderStatus, paymentStatus, createdAt
-  - Cache: automatic indexes on Redis keys
-
-### Cloudinary Image Optimization
-- **Optimization**: Dynamic URL generation with f_auto, q_auto, w_800 transformations
-- **Storage**: All product and banner images stored on Cloudinary
-- **Delivery**: Optimized images served directly from CDN
-
-### Cron Jobs & Scheduled Tasks
-- **Automatic Product Sync**: Periodic synchronization with Mahasagar API
-- **Cache Cleanup**: Automatic cleanup of expired cache entries
-- **Maintenance Tasks**: Periodic database maintenance and cleanup
-
-### Graceful Shutdown
-- **Signal Handling**: SIGTERM and SIGINT signals handled properly
-- **Connection Cleanup**: MongoDB connections closed properly
-- **Pending Requests**: Finishes all pending requests before shutting down
-- **Logging**: Shutdown events logged using Winston
-
-### Global Error Handling
-- **Uncaught Exceptions**: Caught and logged using Winston
-- **Unhandled Rejections**: Caught and logged using Winston
-- **Clean Responses**: Returns clean JSON error responses
-- **No Stack Traces**: Stack traces never exposed in production
-
-## Architecture
-
-### Request Flow
-1. **Incoming Request** → Express Router
-2. **Security Middleware** → Helmet, CORS, Rate Limiting
-3. **Authentication** → JWT verification (for protected routes)
-4. **Validation** → Joi validation
-5. **Caching** → Check Redis/memory cache (public routes)
-6. **Business Logic** → Controller/Service layer
-7. **Database** → MongoDB operations
-8. **Response** → Standardized API response
-
-### Authentication Flow
-1. **Login** → Validate credentials → Generate JWT
-2. **Protected Route** → Verify JWT → Extract user info → Authorize access
-3. **Role-Based Access** → Check admin permissions → Allow/Deny actions
-
-### Order Flow
-1. **Create Order** → Validate products/stock → Deduct stock → Create order
-2. **Payment Verification** → Admin approval → Update status → Send notifications
-3. **Order Status Updates** → Track progress → Send notifications → Complete order
-
-### Product Sync Flow
-1. **Trigger Sync** → Fetch from Mahasagar API → Transform data
-2. **Upsert Products** → Update existing/create new → Respect manual overrides
-3. **Cache Invalidation** → Clear related cache entries → Update timestamps
-
-### Cache Flow
-1. **Request** → Check Redis cache → Return if available
-2. **Miss** → Query database → Store in cache → Return result
-3. **Update** → Invalidate related cache entries → Update database
-
----
-
-**Last Updated**: July 2026
-**Version**: 1.0
+### Logging
+- Winston logger with different log levels (info, warn, error, http)
+- Logs include timestamps and structured data
+- Error logs capture stack traces
+- HTTP request logging in development mode
