@@ -10,7 +10,8 @@
     "seed": "node scripts/seedAdmin.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "audit": "npm audit",
-    "fix-stock-status": "node scripts/fixMahasagarStockStatus.js"
+    "fix-stock-status": "node scripts/fixMahasagarStockStatus.js",
+    "fix-product-data": "node scripts/fix-product-data.js"
   },
   "keywords": [],
   "author": "",

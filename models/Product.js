@@ -29,6 +29,11 @@ const productSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  shortDescription: {
+    type: String,
+    trim: true,
+    maxlength: [300, 'Short description cannot exceed 300 characters'],
+  },
   category: {
     type: String,
     required: [true, 'Category is required'],
@@ -54,6 +59,11 @@ const productSchema = new mongoose.Schema({
       },
       message: 'Sale price must be less than or equal to regular price',
     },
+  },
+  discountPercentage: {
+    type: Number,
+    min: [0, 'Discount percentage cannot be negative'],
+    max: [100, 'Discount percentage cannot exceed 100'],
   },
   images: [{
     type: String,
@@ -134,6 +144,7 @@ productSchema.index({ name: 'text', description: 'text' }); // Text index for se
 productSchema.index({ price: 1 }); // Index for price range queries
 productSchema.index({ slug: 1 }); // Index for slug queries
 productSchema.index({ salePrice: 1 }); // Index for deals calculation
+productSchema.index({ discountPercentage: 1 }); // Index for discount sorting
 productSchema.index({ views: -1 }); // Index for trending products
 productSchema.index({ salesCount: -1 }); // Index for top selling products
 

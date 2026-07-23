@@ -276,9 +276,9 @@ const transformMahasagarProduct = (mahasagarProduct) => {
                      '';
 
   // Use product_code as an alternative identifier
-  const sourceId = String(mahasagarProduct.product_code || mahasagarProduct.id || mahasagarProduct.product_id);
+  const sourceId = String(rawProduct.product_code || rawProduct.id || rawProduct.product_id);
 
-  // Extract attributes from product_variant and product_attribute if available
+  // Extract attributes from product_variants if available
   const attributes = {
     sizes: [],
     colors: [],
@@ -286,8 +286,8 @@ const transformMahasagarProduct = (mahasagarProduct) => {
   };
 
   // Extract variants and attributes from product_variants array
-  if (Array.isArray(mahasagarProduct.product_variants)) {
-    mahasagarProduct.product_variants.forEach(variant => {
+  if (Array.isArray(rawProduct.product_variants)) {
+    rawProduct.product_variants.forEach(variant => {
       if (variant.size && !attributes.sizes.includes(variant.size)) {
         attributes.sizes.push(variant.size);
       }
@@ -303,32 +303,16 @@ const transformMahasagarProduct = (mahasagarProduct) => {
     });
   }
 
-  // Also handle product_attributes if available
-  if (Array.isArray(mahasagarProduct.product_attributes)) {
-    mahasagarProduct.product_attributes.forEach(attr => {
-      if (attr.size && !attributes.sizes.includes(attr.size)) {
-        attributes.sizes.push(attr.size);
-      }
-      if (attr.color && !attributes.colors.includes(attr.color)) {
-        attributes.colors.push(attr.color);
-      }
-      if (attr.name) {
-        attributes.variants.push({
-          name: attr.name,
-          value: attr.value || attr.id
-        });
-      }
-    });
-  }
-
   // Map Mahasagar product fields to our Product schema
   const transformedProduct = {
     sourceId: sourceId,
     name: name.trim(),
     description: description.trim(),
+    shortDescription: shortDescription, // NEW FIELD: Generated from description
     category: category,
     price: price,
     salePrice: salePrice,
+    discountPercentage: discountPercentage, // NEW FIELD: Calculated from price and salePrice
     images: images,
     stock: stock,
     status: status,
